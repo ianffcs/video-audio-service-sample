@@ -18,14 +18,13 @@
                                  .videoPlayerOptions (vp/VideoPlayerOptions .allowBackgroundPlayback true))]
     :watch [^vpl/MyAudioHandler? as-handler (vpl/init-audio-service audio-player) :dispose nil]
     :when as-handler
-    :let [{::vpl/keys [media-stream]} (vpl/setup-player audio-player video-controller as-handler video-map)]
+    :let [initialized-video (-> video-map
+                                (assoc ::vpl/audio-service-handler ^vpl/MyAudioHandler as-handler
+                                       ::vpl/video-controller ^vp/VideoPlayerController video-controller
+                                       ::vpl/audio-player ^ja/AudioPlayer audio-player)
+                                vpl/setup-player)
+          {::vpl/keys [media-stream]} initialized-video]
     (f/widget
-      :when audio-player
-      :watch [ps (or (some-> ^as/AudioHandler as-handler
-                             .-playbackState
-                             (.map (fn [st] (.-playing ^as/PlaybackState st)))
-                             (.distinct))
-                     as/AudioProcessingState.idle)]
       (m/SingleChildScrollView)
       .child
       (m/Padding .padding (m/EdgeInsets.all 16.0))
@@ -43,7 +42,8 @@
                                            (.seek ^as/SeekHandler as-handler new-pos)
                                            nil)})
        (m/SizedBox .height 20)
-       (vpl/PlayerState {::vpl/player-state ps})
+       (vpl/PlayerState {::vpl/audio-service-handler as-handler
+                         ::vpl/audio-player          audio-player})
        (m/SizedBox .height 10)
        (m/Card
          .child
@@ -60,21 +60,16 @@
                                (m/Text "• Lock screen controls available")
                                (m/Text "• Audio continues when minimized")])))])))
 
-(def default-video-map
-  {::vpl/url     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-   ::vpl/art-uri "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/220px-Big_buck_bunny_poster_big.jpg"
-   ::vpl/title   "Big Buck Bunny"
-   ::vpl/album   "Big Buck Bunny"
-   ::vpl/artist  "Blender Foundation"})
-
 ;; Main entry point
 (defn ^:async main []
   (.ensureInitialized w/WidgetsFlutterBinding)
-  (f/run
-    (m/MaterialApp
-      .title "Video + Audio Service")
-    .home
-    (m/Scaffold
-      .appBar (m/AppBar .title (m/Text "Video with Background Audio")))
-    .body
-    (VideoPlayerApp default-video-map)))
+  (let [default-video-map {::vpl/url     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+                           ::vpl/art-uri "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/220px-Big_buck_bunny_poster_big.jpg"
+                           ::vpl/title   "Big Buck Bunny"
+                           ::vpl/album   "Big Buck Bunny"
+                           ::vpl/artist  "Blender Foundation"}]
+    (f/run
+      (m/MaterialApp .title "Video + Audio Service")
+      .home (m/Scaffold
+              .appBar (m/AppBar .title (m/Text "Video with Background Audio")))
+      .body (VideoPlayerApp default-video-map))))

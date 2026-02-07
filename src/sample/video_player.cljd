@@ -8,20 +8,28 @@
             ["dart:math" :as math]
             [cljd.flutter :as f]))
 
-(defn make-media-item
-  [{::keys [url
-            album
-            title
-            artist
-            art-uri
-            duration]}]
-  (as/MediaItem
-    .id url
-    .album album
-    .title title
-    .artist artist
-    .duration ^Duration duration
-    .artUri (Uri/parse art-uri)))
+(defn format-duration [millis]
+  (let [duration (Duration. .milliseconds
+                            (int millis))
+        hours (.-inHours duration)
+        minutes (mod (.-inMinutes duration)
+                     60)
+        seconds (mod (.-inSeconds duration)
+                     60)
+        pad #(-> %
+                 str
+                 (.padLeft 2
+                           "0"))]
+    (if (> hours
+           0)
+      (str hours
+           ":"
+           (pad minutes)
+           ":"
+           (pad seconds))
+      (str (pad minutes)
+           ":"
+           (pad seconds)))))
 
 (def processing-state->audio-processing-state
   {ja/ProcessingState.idle      as/AudioProcessingState.idle
@@ -34,6 +42,14 @@
   #{as/MediaAction.seek
     as/MediaAction.seekForward
     as/MediaAction.seekBackward})
+
+(defn audio-player->playback-context
+  [^ja/AudioPlayer audio-player]
+  {:processing-state  (.-processingState audio-player)
+   :playing           (.-playing audio-player)
+   :position          (.-position audio-player)
+   :buffered-position (.-bufferedPosition audio-player)
+   :speed             (.-speed audio-player)})
 
 (def android-compact-action-indices
   [0
@@ -49,13 +65,33 @@
    as/MediaControl.stop
    as/MediaControl.fastForward])
 
-(defn audio-player->playback-context
+(deftype MyAudioHandler
   [^ja/AudioPlayer audio-player]
-  {:processing-state  (.-processingState audio-player)
-   :playing           (.-playing audio-player)
-   :position          (.-position audio-player)
-   :buffered-position (.-bufferedPosition audio-player)
-   :speed             (.-speed audio-player)})
+  :extends (as/BaseAudioHandler)
+  (play [_]
+    (.play audio-player))
+  (pause [_]
+    (.pause audio-player))
+  (stop [_]
+    (.stop audio-player))
+  ^:mixin as/SeekHandler
+  (seek [_ ^Duration duration]
+    (.seek audio-player duration)))
+
+(defn make-media-item
+  [{::keys [url
+            album
+            title
+            artist
+            art-uri
+            duration]}]
+  (as/MediaItem
+    .id url
+    .album album
+    .title title
+    .artist artist
+    .duration ^Duration duration
+    .artUri (Uri/parse art-uri)))
 
 (defn playback-state-from-context
   [^ja/PlaybackEvent event
@@ -81,33 +117,23 @@
     event
     (audio-player->playback-context audio-player)))
 
-(deftype MyAudioHandler
-  [^ja/AudioPlayer audio-player]
-  :extends (as/BaseAudioHandler)
-  (play [_]
-    (.play audio-player))
-  (pause [_]
-    (.pause audio-player))
-  (stop [_]
-    (.stop audio-player))
-  ^:mixin as/SeekHandler
-  (seek [_ ^Duration duration]
-    (.seek audio-player duration)))
-
 (defn setup-player
-  [^ja/AudioPlayer audio-player
-   ^vp/VideoPlayerController video-controller
-   ^MyAudioHandler as-handler
-   {::keys [url]
-    :as video-map}]
-  (let [pipe-state (.listen (.-playbackEventStream audio-player)
+  [{::keys [url
+            audio-player
+            video-controller
+            audio-service-handler]
+    :as    video-map}]
+  (let [^ja/AudioPlayer audio-player audio-player
+        ^vp/VideoPlayerController video-controller video-controller
+        ^MyAudioHandler audio-service-handler audio-service-handler
+        pipe-state (.listen (.-playbackEventStream audio-player)
                             (fn [event]
-                              (.add (.-playbackState as-handler)
+                              (.add (.-playbackState audio-service-handler)
                                     ^as/PlaybackState (transform-event audio-player event))
                               nil))
         set-source-and-item (-> (.setAudioSource audio-player (ja/AudioSource.uri (Uri/parse url)))
                                 (.then (fn [^Duration duration]
-                                         (.add (.-mediaItem as-handler) (make-media-item (assoc video-map ::duration duration)))
+                                         (.add (.-mediaItem audio-service-handler) (make-media-item (assoc video-map ::duration duration)))
                                          nil)))
         init-video (-> video-controller
                        .initialize
@@ -131,52 +157,23 @@
                                  (.play video-controller)
                                  (.pause video-controller)))
                              nil))
-        media-stream (-> (rx/Rx.combineLatest2 (.-mediaItem as-handler)
-                                                (as/AudioService.position)
-                                                (fn [media-item position]
-                                                  {:media-item media-item
-                                                   :position   position}))
-                         (.where (fn [m] (some? (:media-item m)))))]
-    {::pipe-state          pipe-state
-     ::set-source-and-item set-source-and-item
-     ::init-video          init-video
-     ::sync-pos            sync-pos
-     ::sync-play           sync-play
-     ::media-stream        media-stream}))
-
-(defn duration-ms [^Duration duration]
-  (.-inMilliseconds duration))
-
-(defn abs-int [n]
-  (if (< n 0)
-    (- n)
-    n))
-
-(defn format-duration [millis]
-  (let [duration (Duration. .milliseconds
-                            (int millis))
-        hours (.-inHours duration)
-        minutes (mod (.-inMinutes duration)
-                     60)
-        seconds (mod (.-inSeconds duration)
-                     60)
-        pad #(-> %
-                 str
-                 (.padLeft 2
-                           "0"))]
-    (if (> hours
-           0)
-      (str hours
-           ":"
-           (pad minutes)
-           ":"
-           (pad seconds))
-      (str (pad minutes)
-           ":"
-           (pad seconds)))))
+        media-stream (.where (rx/Rx.combineLatest2
+                               (.-mediaItem audio-service-handler)
+                               (as/AudioService.position)
+                               (fn [media-item position]
+                                 {:media-item media-item
+                                  :position   position}))
+                             (fn [m] (some? (:media-item m))))]
+    (assoc video-map
+      ::pipe-state pipe-state
+      ::set-source-and-item set-source-and-item
+      ::init-video init-video
+      ::sync-pos sync-pos
+      ::sync-play sync-play
+      ::media-stream media-stream)))
 
 (defn init-audio-service
-  [^ja/AudioPlayer audio-player]
+  [audio-player]
   (as/AudioService.init
     .builder (fn [] ^as/AudioHandler
                (->MyAudioHandler ^ja/AudioPlayer audio-player))
@@ -185,6 +182,15 @@
               .androidNotificationChannelName "Video Audio Service"
               .androidNotificationOngoing true
               .androidShowNotificationBadge true)))
+
+(defn player-actions
+  "Returns a map of playback callbacks for a given audio handler."
+  [^MyAudioHandler handler]
+  {::on-rewind       (fn [] (.rewind handler) nil)
+   ::on-play         (fn [] (.play handler) nil)
+   ::on-pause        (fn [] (.pause handler) nil)
+   ::on-stop         (fn [] (.stop handler) nil)
+   ::on-fast-forward (fn [] (.fastForward handler) nil)})
 
 (defn VideoLoader
   [{::keys [video-controller]}]
@@ -198,15 +204,6 @@
       (m/Container
         .height 200
         .child (m/Center .child (m/CircularProgressIndicator))))))
-
-(defn player-actions
-  "Returns a map of playback callbacks for a given audio handler."
-  [^MyAudioHandler handler]
-  {::on-rewind       (fn [] (.rewind handler) nil)
-   ::on-play         (fn [] (.play handler) nil)
-   ::on-pause        (fn [] (.pause handler) nil)
-   ::on-stop         (fn [] (.stop handler) nil)
-   ::on-fast-forward (fn [] (.fastForward handler) nil)})
 
 (defn PlayerControls
   [{::keys [audio-service-handler]}]
@@ -235,9 +232,16 @@
        .onPressed on-fast-forward)]))
 
 (defn PlayerState
-  [{::keys [player-state]}]
+  [{::keys [audio-player
+            audio-service-handler]}]
   (f/widget
-    (m/Text (str "Playing: " player-state) .textAlign m/TextAlign.center)))
+    :when audio-player
+    :watch [ps (or (some-> ^as/AudioHandler audio-service-handler
+                           .-playbackState
+                           (.map (fn [st] (.-playing ^as/PlaybackState st)))
+                           (.distinct))
+                   as/AudioProcessingState.idle)]
+    (m/Text (str "Playing: " ps) .textAlign m/TextAlign.center)))
 
 (defn BasicTitle
   [{::keys [audio-service-handler]}]
