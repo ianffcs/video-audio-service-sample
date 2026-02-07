@@ -1,16 +1,28 @@
-# cljd_video_audio_service
+# Video + Audio Service (CLJD Flutter Sample)
 
-A new Flutter project.
+A ClojureDart (CLJD) Flutter sample that plays a network video while keeping audio in the background. Audio is handled by `just_audio` + `audio_service`, video display by `video_player`. The UI includes play/pause/seek/rewind/fast-forward and keeps video/audio positions in sync.
 
-## Getting Started
+## Features
+- Background audio with media notification and lock-screen controls
+- Video playback with muted video track
+- Seek bar and playback state display
+- Demo media: Big Buck Bunny (public URLs)
 
-This project is a starting point for a Flutter application.
+## Project Layout
+- `src/sample/main.cljd`: primary app source (ClojureDart)
+- `lib/main.dart`: Flutter entrypoint; exports generated Dart
+- `lib/cljd-out/`: generated Dart output (do not edit by hand)
 
-A few resources to get you started if this is your first Flutter project:
+## Editing CLJD Sources
+If you edit `src/sample/main.cljd`, regenerate Dart output before running Flutter:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```bash
+clj -M:cljd init
+clj -M:cljd flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Then run cljd as above.
+
+## Notes
+- Background audio behavior is driven by `audio_service` and may require platform-specific tweaks.
+- The sample media is remote; network access is required.
