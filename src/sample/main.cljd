@@ -23,42 +23,40 @@
                                        ::vpl/video-controller ^vp/VideoPlayerController video-controller
                                        ::vpl/audio-player ^ja/AudioPlayer audio-player)
                                 vpl/setup-player)
-          {::vpl/keys [media-stream]} initialized-video]
-    (f/widget
-      (m/SingleChildScrollView)
-      .child
-      (m/Padding .padding (m/EdgeInsets.all 16.0))
-      .child
-      (m/Column .crossAxisAlignment m/CrossAxisAlignment.stretch)
-      .children
-      [(vpl/VideoLoader {::vpl/video-controller video-controller})
-       (m/SizedBox .height 20)
-       (vpl/BasicTitle {::vpl/audio-service-handler as-handler})
-       (m/SizedBox .height 10)
-       (vpl/PlayerControls {::vpl/audio-service-handler as-handler})
-       (m/SizedBox .height 10)
-       (vpl/SeekBar {::vpl/media-stream  media-stream
-                     ::vpl/on-change-end (fn [new-pos]
-                                           (.seek ^as/SeekHandler as-handler new-pos)
-                                           nil)})
-       (m/SizedBox .height 20)
-       (vpl/PlayerState {::vpl/audio-service-handler as-handler
-                         ::vpl/audio-player          audio-player})
-       (m/SizedBox .height 10)
-       (m/Card
-         .child
-         (m/Padding
-           .padding (m/EdgeInsets.all 16.0)
-           .child (m/Column
-                    .crossAxisAlignment m/CrossAxisAlignment.start
-                    .children [(m/Text "Background Audio Features:"
-                                       .style (m/TextStyle
-                                                .fontWeight m/FontWeight.bold))
-                               (m/SizedBox .height 8)
-                               (m/Text "• Audio via just_audio (background support)")
-                               (m/Text "• Video display via video_player (muted)")
-                               (m/Text "• Lock screen controls available")
-                               (m/Text "• Audio continues when minimized")])))])))
+          {::vpl/keys [media-stream audio-service-handler]} initialized-video]
+    (m/SingleChildScrollView)
+    .child
+    (m/Padding .padding (m/EdgeInsets.all 16.0))
+    .child
+    (m/Column .crossAxisAlignment m/CrossAxisAlignment.stretch)
+    .children
+    [(vpl/VideoLoader initialized-video)
+     (m/SizedBox .height 20)
+     (vpl/BasicTitle initialized-video)
+     (m/SizedBox .height 10)
+     (vpl/PlayerControls initialized-video)
+     (m/SizedBox .height 10)
+     (vpl/SeekBar {::vpl/media-stream  media-stream
+                   ::vpl/on-change-end (fn [new-pos]
+                                         (.seek ^as/SeekHandler audio-service-handler new-pos)
+                                         nil)})
+     (m/SizedBox .height 20)
+     (vpl/PlayerState initialized-video)
+     (m/SizedBox .height 10)
+     (m/Card
+       .child
+       (m/Padding
+         .padding (m/EdgeInsets.all 16.0)
+         .child (m/Column
+                  .crossAxisAlignment m/CrossAxisAlignment.start
+                  .children [(m/Text "Background Audio Features:"
+                                     .style (m/TextStyle
+                                              .fontWeight m/FontWeight.bold))
+                             (m/SizedBox .height 8)
+                             (m/Text "• Audio via just_audio (background support)")
+                             (m/Text "• Video display via video_player (muted)")
+                             (m/Text "• Lock screen controls available")
+                             (m/Text "• Audio continues when minimized")])))]))
 
 ;; Main entry point
 (defn ^:async main []
