@@ -69,69 +69,29 @@
                                                     :position   position}))
                            (.where (fn [m] (some? (:media-item m)))))]
     :when audio-player
+    :watch [ps (or (some-> ^as/AudioHandler as-handler
+                           .-playbackState
+                           (.map (fn [st] (.-playing ^as/PlaybackState st)))
+                           (.distinct))
+                   as/AudioProcessingState.idle)]
     (m/SingleChildScrollView)
     .child
     (m/Padding .padding (m/EdgeInsets.all 16.0))
     .child
     (m/Column .crossAxisAlignment m/CrossAxisAlignment.stretch)
     .children
-    [(f/widget
-       :watch [_ video-controller]
-       :let [value (.-value video-controller)]
-       (if (.-isInitialized value)
-         (m/AspectRatio
-           .aspectRatio (.-aspectRatio value)
-           .child (vp/VideoPlayer video-controller))
-         (m/Container
-           .height 200
-           .child (m/Center .child (m/CircularProgressIndicator)))))
+    [(vpl/VideoLoader {::vpl/video-controller video-controller})
      (m/SizedBox .height 20)
-     (f/widget
-       :watch [item (.-mediaItem as-handler)]
-       :when item
-       (m/Text (.-title ^as/MediaItem item)
-               .style (m/TextStyle .fontSize 20 .fontWeight m/FontWeight.bold)
-               .textAlign m/TextAlign.center))
+     (vpl/BasicTitle {::vpl/audio-service-handler as-handler})
      (m/SizedBox .height 10)
-     (f/widget
-       :watch [playback-state (.-playbackState as-handler)]
-       :when playback-state
-       :let [playing (.-playing ^as/PlaybackState playback-state)]
-       (m/Row .mainAxisAlignment m/MainAxisAlignment.center)
-       .children
-       [(m/IconButton
-          .icon (m/Icon m/Icons.fast_rewind)
-          .iconSize 64
-          .onPressed (fn [] (.rewind ^vpl/MyAudioHandler as-handler) nil))
-        (m/IconButton
-          .icon (m/Icon (if playing m/Icons.pause m/Icons.play_arrow))
-          .iconSize 64
-          .onPressed (fn []
-                       (if playing
-                         (.pause ^vpl/MyAudioHandler as-handler)
-                         (.play ^vpl/MyAudioHandler as-handler))
-                       nil))
-        (m/IconButton
-          .icon (m/Icon m/Icons.stop)
-          .iconSize 64
-          .onPressed (fn [] (.stop ^vpl/MyAudioHandler as-handler) nil))
-        (m/IconButton
-          .icon (m/Icon m/Icons.fast_forward)
-          .iconSize 64
-          .onPressed (fn [] (.fastForward ^vpl/MyAudioHandler as-handler) nil))])
+     (vpl/PlayerControls {::vpl/audio-service-handler as-handler})
      (m/SizedBox .height 10)
      (vpl/SeekBar {::vpl/media-stream  media-stream
                    ::vpl/on-change-end (fn [new-pos]
                                          (.seek ^as/SeekHandler as-handler new-pos)
                                          nil)})
      (m/SizedBox .height 20)
-     (f/widget
-       :watch [ps (or (some-> ^as/AudioHandler as-handler
-                              .-playbackState
-                              (.map (fn [st] (.-playing ^as/PlaybackState st)))
-                              (.distinct))
-                      as/AudioProcessingState.idle)]
-       (m/Text (str "Playing: " ps) .textAlign m/TextAlign.center))
+     (vpl/PlayerState {::vpl/player-state ps})
      (m/SizedBox .height 10)
      (m/Card
        .child

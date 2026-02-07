@@ -3,6 +3,7 @@
   (:require ["package:flutter/material.dart" :as m]
             ["package:audio_service/audio_service.dart" :as as]
             ["package:just_audio/just_audio.dart" :as ja]
+            ["package:video_player/video_player.dart" :as vp]
             ["dart:math" :as math]
             [cljd.flutter :as f]))
 
@@ -116,6 +117,68 @@
   ^:mixin as/SeekHandler
   (seek [_ ^Duration duration]
     (.seek audio-player duration)))
+
+(defn VideoLoader
+  [{::keys [video-controller]}]
+  (f/widget
+    :watch [_ video-controller]
+    :let [value (.-value ^vp/VideoPlayerController video-controller)]
+    (if (.-isInitialized value)
+      (m/AspectRatio
+        .aspectRatio (.-aspectRatio value)
+        .child (vp/VideoPlayer video-controller))
+      (m/Container
+        .height 200
+        .child (m/Center .child (m/CircularProgressIndicator))))))
+
+(defn player-actions
+  "Returns a map of playback callbacks for a given audio handler."
+  [^MyAudioHandler handler]
+  {::on-rewind       (fn [] (.rewind handler) nil)
+   ::on-play         (fn [] (.play handler) nil)
+   ::on-pause        (fn [] (.pause handler) nil)
+   ::on-stop         (fn [] (.stop handler) nil)
+   ::on-fast-forward (fn [] (.fastForward handler) nil)})
+
+(defn PlayerControls
+  [{::keys [audio-service-handler]}]
+  (f/widget
+    :watch [playback-state (.-playbackState ^MyAudioHandler audio-service-handler)]
+    :when playback-state
+    :let [playing (.-playing ^as/PlaybackState playback-state)
+          {::keys [on-rewind on-play on-pause on-stop on-fast-forward]} (player-actions audio-service-handler)]
+    (m/Row .mainAxisAlignment m/MainAxisAlignment.center)
+    .children
+    [(m/IconButton
+       .icon (m/Icon m/Icons.fast_rewind)
+       .iconSize 64
+       .onPressed on-rewind)
+     (m/IconButton
+       .icon (m/Icon (if playing m/Icons.pause m/Icons.play_arrow))
+       .iconSize 64
+       .onPressed (if playing on-pause on-play))
+     (m/IconButton
+       .icon (m/Icon m/Icons.stop)
+       .iconSize 64
+       .onPressed on-stop)
+     (m/IconButton
+       .icon (m/Icon m/Icons.fast_forward)
+       .iconSize 64
+       .onPressed on-fast-forward)]))
+
+(defn PlayerState
+  [{::keys [player-state]}]
+  (f/widget
+    (m/Text (str "Playing: " player-state) .textAlign m/TextAlign.center)))
+
+(defn BasicTitle
+  [{::keys [audio-service-handler]}]
+  (f/widget
+    :watch [item (.-mediaItem ^MyAudioHandler audio-service-handler)]
+    :when item
+    (m/Text (.-title ^as/MediaItem item)
+            .style (m/TextStyle .fontSize 20 .fontWeight m/FontWeight.bold)
+            .textAlign m/TextAlign.center)))
 
 (defn SeekBar
   [{::keys [on-change-end
