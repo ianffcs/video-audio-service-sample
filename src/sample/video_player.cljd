@@ -1,7 +1,10 @@
 (ns sample.video-player
   "Non-widget video player logic: audio handler, media items, playback state, utilities."
-  (:require ["package:audio_service/audio_service.dart" :as as]
-            ["package:just_audio/just_audio.dart" :as ja]))
+  (:require ["package:flutter/material.dart" :as m]
+            ["package:audio_service/audio_service.dart" :as as]
+            ["package:just_audio/just_audio.dart" :as ja]
+            ["dart:math" :as math]
+            [cljd.flutter :as f]))
 
 (defn make-media-item
   [{::keys [url
@@ -114,3 +117,38 @@
   (seek [_ ^Duration duration]
     (.seek audio-player duration)))
 
+(defn SeekBar
+  [{::keys [on-change-end
+            media-stream]}]
+  (f/widget
+    :watch [ms media-stream]
+    :when ms
+    :let [position (or (some-> ms
+                               :position)
+                       Duration/zero)
+          duration (or (some-> ^as/MediaItem
+                               (get ms :media-item)
+                               .-duration)
+                       Duration/zero)
+          drag-value (atom nil)
+          duration-ms (.-inMilliseconds ^Duration duration)
+          position-ms (.-inMilliseconds ^Duration position)
+          value (or @drag-value
+                    position-ms)]
+    (m/Column
+      .mainAxisSize m/MainAxisSize.min
+      .children [(m/Slider
+                   .min 0.0
+                   .max (double duration-ms)
+                   .value (math/min (double value)
+                                    (double duration-ms))
+                   .onChanged (fn [^double v]
+                                (reset! drag-value
+                                        (int v))
+                                nil)
+                   .onChangeEnd (fn [^double v]
+                                  (reset! drag-value nil)
+                                  (when on-change-end
+                                    (on-change-end (Duration. .milliseconds (.round v))))
+                                  nil))
+                 (m/Text (format-duration value))])))

@@ -6,46 +6,8 @@
             ["package:just_audio/just_audio.dart" :as ja]
             ["package:video_player/video_player.dart" :as vp]
             ["package:rxdart/rxdart.dart" :as rx]
-            ["dart:async" :as da]
-            ["dart:math" :as math]
             [cljd.flutter :as f]
             [sample.video-player :as vpl]))
-
-(defn SeekBar
-  [{::vpl/keys [on-change-end
-                media-stream]}]
-  (f/widget
-    :watch [ms media-stream]
-    :when ms
-    :let [position (or (some-> ms
-                               :position)
-                       Duration/zero)
-          duration (or (some-> ^as/MediaItem
-                               (get ms :media-item)
-                               .-duration)
-                       Duration/zero)
-          drag-value (atom nil)
-          duration-ms (.-inMilliseconds ^Duration duration)
-          position-ms (.-inMilliseconds ^Duration position)
-          value (or @drag-value
-                    position-ms)]
-    (m/Column
-      .mainAxisSize m/MainAxisSize.min
-      .children [(m/Slider
-                   .min 0.0
-                   .max (double duration-ms)
-                   .value (math/min (double value)
-                                    (double duration-ms))
-                   .onChanged (fn [^double v]
-                                (reset! drag-value
-                                        (int v))
-                                nil)
-                   .onChangeEnd (fn [^double v]
-                                  (reset! drag-value nil)
-                                  (when on-change-end
-                                    (on-change-end (Duration. .milliseconds (.round v))))
-                                  nil))
-                 (m/Text (vpl/format-duration value))])))
 
 (defn VideoPlayerApp
   [{::vpl/keys [url]
@@ -158,10 +120,10 @@
           .iconSize 64
           .onPressed (fn [] (.fastForward ^vpl/MyAudioHandler as-handler) nil))])
      (m/SizedBox .height 10)
-     (SeekBar {::vpl/media-stream  media-stream
-               ::vpl/on-change-end (fn [new-pos]
-                                     (.seek ^as/SeekHandler as-handler new-pos)
-                                     nil)})
+     (vpl/SeekBar {::vpl/media-stream  media-stream
+                   ::vpl/on-change-end (fn [new-pos]
+                                         (.seek ^as/SeekHandler as-handler new-pos)
+                                         nil)})
      (m/SizedBox .height 20)
      (f/widget
        :watch [ps (or (some-> ^as/AudioHandler as-handler
