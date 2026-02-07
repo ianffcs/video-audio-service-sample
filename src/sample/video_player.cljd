@@ -4,6 +4,7 @@
             ["package:audio_service/audio_service.dart" :as as]
             ["package:just_audio/just_audio.dart" :as ja]
             ["package:video_player/video_player.dart" :as vp]
+            ["package:rxdart/rxdart.dart" :as rx]
             ["dart:math" :as math]
             [cljd.flutter :as f]))
 
@@ -74,6 +75,75 @@
     .speed speed
     .queueIndex (-> event .-currentIndex)))
 
+(defn transform-event
+  [^ja/AudioPlayer audio-player ^ja/PlaybackEvent event]
+  (playback-state-from-context
+    event
+    (audio-player->playback-context audio-player)))
+
+(deftype MyAudioHandler
+  [^ja/AudioPlayer audio-player]
+  :extends (as/BaseAudioHandler)
+  (play [_]
+    (.play audio-player))
+  (pause [_]
+    (.pause audio-player))
+  (stop [_]
+    (.stop audio-player))
+  ^:mixin as/SeekHandler
+  (seek [_ ^Duration duration]
+    (.seek audio-player duration)))
+
+(defn setup-player
+  [^ja/AudioPlayer audio-player
+   ^vp/VideoPlayerController video-controller
+   ^MyAudioHandler as-handler
+   {::keys [url]
+    :as video-map}]
+  (let [pipe-state (.listen (.-playbackEventStream audio-player)
+                            (fn [event]
+                              (.add (.-playbackState as-handler)
+                                    ^as/PlaybackState (transform-event audio-player event))
+                              nil))
+        set-source-and-item (-> (.setAudioSource audio-player (ja/AudioSource.uri (Uri/parse url)))
+                                (.then (fn [^Duration duration]
+                                         (.add (.-mediaItem as-handler) (make-media-item (assoc video-map ::duration duration)))
+                                         nil)))
+        init-video (-> video-controller
+                       .initialize
+                       (.then (fn [_]
+                                (.setVolume video-controller 0.0)
+                                (.setLooping video-controller false)
+                                nil)))
+        sync-pos (.listen (.-positionStream audio-player)
+                          (fn [^Duration audio-pos]
+                            (when (and audio-pos (some-> video-controller .-value .-isInitialized))
+                              (let [video-pos (-> video-controller .-value .-position)
+                                    diff-ms (- (.-inMilliseconds audio-pos) (.-inMilliseconds video-pos))
+                                    diff-abs (if (< diff-ms 0) (- diff-ms) diff-ms)]
+                                (when (> diff-abs 500)
+                                  (.seekTo video-controller audio-pos))))
+                            nil))
+        sync-play (.listen (.-playingStream audio-player)
+                           (fn [playing]
+                             (when (some-> video-controller .-value .-isInitialized)
+                               (if playing
+                                 (.play video-controller)
+                                 (.pause video-controller)))
+                             nil))
+        media-stream (-> (rx/Rx.combineLatest2 (.-mediaItem as-handler)
+                                                (as/AudioService.position)
+                                                (fn [media-item position]
+                                                  {:media-item media-item
+                                                   :position   position}))
+                         (.where (fn [m] (some? (:media-item m)))))]
+    {::pipe-state          pipe-state
+     ::set-source-and-item set-source-and-item
+     ::init-video          init-video
+     ::sync-pos            sync-pos
+     ::sync-play           sync-play
+     ::media-stream        media-stream}))
+
 (defn duration-ms [^Duration duration]
   (.-inMilliseconds duration))
 
@@ -105,18 +175,16 @@
            ":"
            (pad seconds)))))
 
-(deftype MyAudioHandler
+(defn init-audio-service
   [^ja/AudioPlayer audio-player]
-  :extends (as/BaseAudioHandler)
-  (play [_]
-    (.play audio-player))
-  (pause [_]
-    (.pause audio-player))
-  (stop [_]
-    (.stop audio-player))
-  ^:mixin as/SeekHandler
-  (seek [_ ^Duration duration]
-    (.seek audio-player duration)))
+  (as/AudioService.init
+    .builder (fn [] ^as/AudioHandler
+               (->MyAudioHandler ^ja/AudioPlayer audio-player))
+    .config (as/AudioServiceConfig
+              .androidNotificationChannelId "com.app.video.audio"
+              .androidNotificationChannelName "Video Audio Service"
+              .androidNotificationOngoing true
+              .androidShowNotificationBadge true)))
 
 (defn VideoLoader
   [{::keys [video-controller]}]

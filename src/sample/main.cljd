@@ -5,7 +5,6 @@
             ["package:audio_service/audio_service.dart" :as as]
             ["package:just_audio/just_audio.dart" :as ja]
             ["package:video_player/video_player.dart" :as vp]
-            ["package:rxdart/rxdart.dart" :as rx]
             [cljd.flutter :as f]
             [sample.video-player :as vpl]))
 
@@ -13,100 +12,53 @@
   [{::vpl/keys [url]
     :as        video-map}]
   (f/widget
-    m/Center
     :managed [audio-player (ja/AudioPlayer)
               video-controller (vp/VideoPlayerController.networkUrl
                                  (Uri/parse url)
                                  .videoPlayerOptions (vp/VideoPlayerOptions .allowBackgroundPlayback true))]
-    :let [transform-event (fn [^ja/PlaybackEvent event]
-                            (vpl/playback-state-from-context
-                              event
-                              (vpl/audio-player->playback-context audio-player)))]
-    :watch [^vpl/MyAudioHandler? as-handler (as/AudioService.init
-                                              .builder (fn [] ^as/AudioHandler
-                                                         (vpl/->MyAudioHandler ^ja/AudioPlayer audio-player))
-                                              .config (as/AudioServiceConfig
-                                                        .androidNotificationChannelId "com.app.video.audio"
-                                                        .androidNotificationChannelName "Video Audio Service"
-                                                        .androidNotificationOngoing true
-                                                        .androidShowNotificationBadge true)) :dispose nil]
+    :watch [^vpl/MyAudioHandler? as-handler (vpl/init-audio-service audio-player) :dispose nil]
     :when as-handler
-    :let [_pipe-state (.listen (.-playbackEventStream audio-player)
-                               (fn [event]
-                                 (.add (.-playbackState as-handler)
-                                       ^as/PlaybackState (transform-event event))
-                                 nil))
-          _set-source-and-item (-> (.setAudioSource audio-player (ja/AudioSource.uri (Uri/parse url)))
-                                   (.then (fn [^Duration duration]
-                                            (.add (.-mediaItem as-handler) (vpl/make-media-item (assoc video-map ::vpl/duration duration)))
-                                            nil)))
-          _init-video (-> video-controller
-                          .initialize
-                          (.then (fn [_]
-                                   (.setVolume video-controller 0.0)
-                                   (.setLooping video-controller false)
-                                   nil)))
-          _sync-pos (.listen (.-positionStream audio-player)
-                             (fn [^Duration audio-pos]
-                               (when (and audio-pos (some-> video-controller .-value .-isInitialized))
-                                 (let [video-pos (-> video-controller .-value .-position)
-                                       diff-ms (- (.-inMilliseconds audio-pos) (.-inMilliseconds video-pos))
-                                       diff-abs (if (< diff-ms 0) (- diff-ms) diff-ms)]
-                                   (when (> diff-abs 500)
-                                     (.seekTo video-controller audio-pos))))
-                               nil))
-          _sync-play (.listen (.-playingStream audio-player)
-                              (fn [playing]
-                                (when (some-> video-controller .-value .-isInitialized)
-                                  (if playing
-                                    (.play video-controller)
-                                    (.pause video-controller)))
-                                nil))
-          media-stream (-> (rx/Rx.combineLatest2 (.-mediaItem as-handler)
-                                                 (as/AudioService.position)
-                                                 (fn [media-item position]
-                                                   {:media-item media-item
-                                                    :position   position}))
-                           (.where (fn [m] (some? (:media-item m)))))]
-    :when audio-player
-    :watch [ps (or (some-> ^as/AudioHandler as-handler
-                           .-playbackState
-                           (.map (fn [st] (.-playing ^as/PlaybackState st)))
-                           (.distinct))
-                   as/AudioProcessingState.idle)]
-    (m/SingleChildScrollView)
-    .child
-    (m/Padding .padding (m/EdgeInsets.all 16.0))
-    .child
-    (m/Column .crossAxisAlignment m/CrossAxisAlignment.stretch)
-    .children
-    [(vpl/VideoLoader {::vpl/video-controller video-controller})
-     (m/SizedBox .height 20)
-     (vpl/BasicTitle {::vpl/audio-service-handler as-handler})
-     (m/SizedBox .height 10)
-     (vpl/PlayerControls {::vpl/audio-service-handler as-handler})
-     (m/SizedBox .height 10)
-     (vpl/SeekBar {::vpl/media-stream  media-stream
-                   ::vpl/on-change-end (fn [new-pos]
-                                         (.seek ^as/SeekHandler as-handler new-pos)
-                                         nil)})
-     (m/SizedBox .height 20)
-     (vpl/PlayerState {::vpl/player-state ps})
-     (m/SizedBox .height 10)
-     (m/Card
-       .child
-       (m/Padding
-         .padding (m/EdgeInsets.all 16.0)
-         .child (m/Column
-                  .crossAxisAlignment m/CrossAxisAlignment.start
-                  .children [(m/Text "Background Audio Features:"
-                                     .style (m/TextStyle
-                                              .fontWeight m/FontWeight.bold))
-                             (m/SizedBox .height 8)
-                             (m/Text "• Audio via just_audio (background support)")
-                             (m/Text "• Video display via video_player (muted)")
-                             (m/Text "• Lock screen controls available")
-                             (m/Text "• Audio continues when minimized")])))]))
+    :let [{::vpl/keys [media-stream]} (vpl/setup-player audio-player video-controller as-handler video-map)]
+    (f/widget
+      :when audio-player
+      :watch [ps (or (some-> ^as/AudioHandler as-handler
+                             .-playbackState
+                             (.map (fn [st] (.-playing ^as/PlaybackState st)))
+                             (.distinct))
+                     as/AudioProcessingState.idle)]
+      (m/SingleChildScrollView)
+      .child
+      (m/Padding .padding (m/EdgeInsets.all 16.0))
+      .child
+      (m/Column .crossAxisAlignment m/CrossAxisAlignment.stretch)
+      .children
+      [(vpl/VideoLoader {::vpl/video-controller video-controller})
+       (m/SizedBox .height 20)
+       (vpl/BasicTitle {::vpl/audio-service-handler as-handler})
+       (m/SizedBox .height 10)
+       (vpl/PlayerControls {::vpl/audio-service-handler as-handler})
+       (m/SizedBox .height 10)
+       (vpl/SeekBar {::vpl/media-stream  media-stream
+                     ::vpl/on-change-end (fn [new-pos]
+                                           (.seek ^as/SeekHandler as-handler new-pos)
+                                           nil)})
+       (m/SizedBox .height 20)
+       (vpl/PlayerState {::vpl/player-state ps})
+       (m/SizedBox .height 10)
+       (m/Card
+         .child
+         (m/Padding
+           .padding (m/EdgeInsets.all 16.0)
+           .child (m/Column
+                    .crossAxisAlignment m/CrossAxisAlignment.start
+                    .children [(m/Text "Background Audio Features:"
+                                       .style (m/TextStyle
+                                                .fontWeight m/FontWeight.bold))
+                               (m/SizedBox .height 8)
+                               (m/Text "• Audio via just_audio (background support)")
+                               (m/Text "• Video display via video_player (muted)")
+                               (m/Text "• Lock screen controls available")
+                               (m/Text "• Audio continues when minimized")])))])))
 
 (def default-video-map
   {::vpl/url     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
