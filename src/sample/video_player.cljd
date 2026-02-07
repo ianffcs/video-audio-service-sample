@@ -1,0 +1,116 @@
+(ns sample.video-player
+  "Non-widget video player logic: audio handler, media items, playback state, utilities."
+  (:require ["package:audio_service/audio_service.dart" :as as]
+            ["package:just_audio/just_audio.dart" :as ja]))
+
+(defn make-media-item
+  [{::keys [url
+            album
+            title
+            artist
+            art-uri
+            duration]}]
+  (as/MediaItem
+    .id url
+    .album album
+    .title title
+    .artist artist
+    .duration ^Duration duration
+    .artUri (Uri/parse art-uri)))
+
+(def processing-state->audio-processing-state
+  {ja/ProcessingState.idle      as/AudioProcessingState.idle
+   ja/ProcessingState.loading   as/AudioProcessingState.loading
+   ja/ProcessingState.buffering as/AudioProcessingState.buffering
+   ja/ProcessingState.ready     as/AudioProcessingState.ready
+   ja/ProcessingState.completed as/AudioProcessingState.completed})
+
+(def playback-system-actions
+  #{as/MediaAction.seek
+    as/MediaAction.seekForward
+    as/MediaAction.seekBackward})
+
+(def android-compact-action-indices
+  [0
+   1
+   3])
+
+(defn controls-for-playing
+  [playing]
+  [as/MediaControl.rewind
+   (if playing
+     as/MediaControl.pause
+     as/MediaControl.play)
+   as/MediaControl.stop
+   as/MediaControl.fastForward])
+
+(defn audio-player->playback-context
+  [^ja/AudioPlayer audio-player]
+  {:processing-state  (.-processingState audio-player)
+   :playing           (.-playing audio-player)
+   :position          (.-position audio-player)
+   :buffered-position (.-bufferedPosition audio-player)
+   :speed             (.-speed audio-player)})
+
+(defn playback-state-from-context
+  [^ja/PlaybackEvent event
+   {:keys [processing-state
+           playing
+           position
+           buffered-position
+           speed]}]
+  (as/PlaybackState
+    .controls (controls-for-playing playing)
+    .systemActions playback-system-actions
+    .androidCompactActionIndices android-compact-action-indices
+    .processingState (get processing-state->audio-processing-state processing-state)
+    .playing playing
+    .updatePosition position
+    .bufferedPosition buffered-position
+    .speed speed
+    .queueIndex (-> event .-currentIndex)))
+
+(defn duration-ms [^Duration duration]
+  (.-inMilliseconds duration))
+
+(defn abs-int [n]
+  (if (< n 0)
+    (- n)
+    n))
+
+(defn format-duration [millis]
+  (let [duration (Duration. .milliseconds
+                            (int millis))
+        hours (.-inHours duration)
+        minutes (mod (.-inMinutes duration)
+                     60)
+        seconds (mod (.-inSeconds duration)
+                     60)
+        pad #(-> %
+                 str
+                 (.padLeft 2
+                           "0"))]
+    (if (> hours
+           0)
+      (str hours
+           ":"
+           (pad minutes)
+           ":"
+           (pad seconds))
+      (str (pad minutes)
+           ":"
+           (pad seconds)))))
+
+(deftype MyAudioHandler
+  [^ja/AudioPlayer audio-player]
+  :extends (as/BaseAudioHandler)
+  (play [_]
+    (.play audio-player))
+  (pause [_]
+    (.pause audio-player))
+  (stop [_]
+    (.stop audio-player))
+  ^:mixin as/SeekHandler
+  (seek [_ ^Duration duration]
+    (.seek audio-player duration)))
+
