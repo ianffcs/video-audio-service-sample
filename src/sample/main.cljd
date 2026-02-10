@@ -2,72 +2,46 @@
   "Video player with background audio - just_audio for audio, video_player for display"
   (:require ["package:flutter/material.dart" :as m]
             ["package:flutter/widgets.dart" :as w]
-            ["package:audio_service/audio_service.dart" :as as]
-            ["package:just_audio/just_audio.dart" :as ja]
-            ["package:video_player/video_player.dart" :as vp]
             [cljd.flutter :as f]
             [sample.video-player :as vpl]))
 
-(defn VideoPlayerApp
-  [{::vpl/keys [url]
-    :as        video-map}]
-  (f/widget
-    :managed [audio-player (ja/AudioPlayer)
-              video-controller (vp/VideoPlayerController.networkUrl
-                                 (Uri/parse url)
-                                 .videoPlayerOptions (vp/VideoPlayerOptions .allowBackgroundPlayback true))]
-    :watch [^vpl/MyAudioHandler? as-handler (vpl/init-audio-service audio-player) :dispose nil]
-    :when as-handler
-    :let [initialized-video (-> video-map
-                                (assoc ::vpl/audio-service-handler ^vpl/MyAudioHandler as-handler
-                                       ::vpl/video-controller ^vp/VideoPlayerController video-controller
-                                       ::vpl/audio-player ^ja/AudioPlayer audio-player)
-                                vpl/setup-player)
-          {::vpl/keys [media-stream audio-service-handler]} initialized-video]
-    (m/SingleChildScrollView)
+(defn default-layout
+  "Returns a vector of widgets for the default player layout."
+  [initialized-video]
+  [(vpl/VideoLoader initialized-video)
+   (m/SizedBox .height 20)
+   (vpl/BasicTitle initialized-video)
+   (m/SizedBox .height 10)
+   (vpl/PlayerControls initialized-video)
+   (m/SizedBox .height 10)
+   (vpl/SeekBar initialized-video)
+   (m/SizedBox .height 20)
+   (vpl/PlayerState initialized-video)])
+
+(defn SamplePlayerView
+  "Renders an initialized video map using default-layout."
+  [initialized-video]
+  (m/SingleChildScrollView
     .child
-    (m/Padding .padding (m/EdgeInsets.all 16.0))
-    .child
-    (m/Column .crossAxisAlignment m/CrossAxisAlignment.stretch)
-    .children
-    [(vpl/VideoLoader initialized-video)
-     (m/SizedBox .height 20)
-     (vpl/BasicTitle initialized-video)
-     (m/SizedBox .height 10)
-     (vpl/PlayerControls initialized-video)
-     (m/SizedBox .height 10)
-     (vpl/SeekBar {::vpl/media-stream  media-stream
-                   ::vpl/on-change-end (fn [new-pos]
-                                         (.seek ^as/SeekHandler audio-service-handler new-pos)
-                                         nil)})
-     (m/SizedBox .height 20)
-     (vpl/PlayerState initialized-video)
-     (m/SizedBox .height 10)
-     (m/Card
-       .child
-       (m/Padding
-         .padding (m/EdgeInsets.all 16.0)
-         .child (m/Column
-                  .crossAxisAlignment m/CrossAxisAlignment.start
-                  .children [(m/Text "Background Audio Features:"
-                                     .style (m/TextStyle
-                                              .fontWeight m/FontWeight.bold))
-                             (m/SizedBox .height 8)
-                             (m/Text "• Audio via just_audio (background support)")
-                             (m/Text "• Video display via video_player (muted)")
-                             (m/Text "• Lock screen controls available")
-                             (m/Text "• Audio continues when minimized")])))]))
+    (m/Padding
+      .padding (m/EdgeInsets.all 16.0)
+      .child
+      (m/Column
+        .crossAxisAlignment m/CrossAxisAlignment.stretch
+        .children (default-layout initialized-video)))))
 
 ;; Main entry point
 (defn ^:async main []
   (.ensureInitialized w/WidgetsFlutterBinding)
-  (let [default-video-map {::vpl/url     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                           ::vpl/art-uri "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/220px-Big_buck_bunny_poster_big.jpg"
-                           ::vpl/title   "Big Buck Bunny"
-                           ::vpl/album   "Big Buck Bunny"
-                           ::vpl/artist  "Blender Foundation"}]
+  (let [video-config {::vpl/url     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+                      ::vpl/art-uri "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/220px-Big_buck_bunny_poster_big.jpg"
+                      ::vpl/title   "Big Buck Bunny"
+                      ::vpl/album   "Big Buck Bunny"
+                      ::vpl/artist  "Blender Foundation"}]
     (f/run
       (m/MaterialApp .title "Video + Audio Service")
       .home (m/Scaffold
               .appBar (m/AppBar .title (m/Text "Video with Background Audio")))
-      .body (VideoPlayerApp default-video-map))))
+      .body (some->> SamplePlayerView
+                     (assoc video-config ::vpl/builder)
+                     (vpl/VideoPlayer)))))

@@ -170,7 +170,10 @@
       ::init-video init-video
       ::sync-pos sync-pos
       ::sync-play sync-play
-      ::media-stream media-stream)))
+      ::media-stream media-stream
+      ::on-seek (fn [^Duration pos]
+                  (.seek ^as/SeekHandler audio-service-handler pos)
+                  nil))))
 
 (defn init-audio-service
   [audio-player]
@@ -253,7 +256,7 @@
             .textAlign m/TextAlign.center)))
 
 (defn SeekBar
-  [{::keys [on-change-end
+  [{::keys [on-seek
             media-stream]}]
   (f/widget
     :watch [ms media-stream]
@@ -283,7 +286,31 @@
                                 nil)
                    .onChangeEnd (fn [^double v]
                                   (reset! drag-value nil)
-                                  (when on-change-end
-                                    (on-change-end (Duration. .milliseconds (.round v))))
+                                  (when on-seek
+                                    (on-seek (Duration. .milliseconds (.round v))))
                                   nil))
                  (m/Text (format-duration value))])))
+
+(defn VideoPlayer
+  "Lifecycle widget. Manages audio-player, video-controller, and audio-service,
+   calls setup-player, then passes the initialized-video map to ::builder.
+
+   (VideoPlayer (assoc video-config ::builder
+                      (fn [initialized-video]
+                        ;; full access to the map before rendering
+                        (VideoPlayerView initialized-video))))"
+  [{::keys [url builder]
+    :as    video-config}]
+  (f/widget
+    :managed [audio-player (ja/AudioPlayer)
+              video-controller (vp/VideoPlayerController.networkUrl
+                                 (Uri/parse url)
+                                 .videoPlayerOptions (vp/VideoPlayerOptions .allowBackgroundPlayback true))]
+    :watch [^MyAudioHandler? as-handler (init-audio-service audio-player) :dispose nil]
+    :when as-handler
+    :let [initialized-video (-> video-config
+                                (assoc ::audio-service-handler ^MyAudioHandler as-handler
+                                       ::video-controller ^vp/VideoPlayerController video-controller
+                                       ::audio-player ^ja/AudioPlayer audio-player)
+                                setup-player)]
+    (builder initialized-video)))
