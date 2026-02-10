@@ -1,6 +1,8 @@
 {:paths ["src"]
  :deps {tensegritics/clojuredart {:git/url "https://github.com/tensegritics/ClojureDart.git"
-                                  :sha "9385be3c88ab6593350fdda50d86af985224971b"}}
+                                  :sha "9385be3c88ab6593350fdda50d86af985224971b"}
+        org.clojars.ianffcs/cljd-video-player {:git/url "https://github.com/ianffcs/cljd-video-player.git"
+                                               :sha "2c5e1e9b239b2032a4fec329655164e6c9bf686c"}}
  :aliases {:cljd {:main-opts ["-m" "cljd.build"]}}
  :cljd/opts {:kind :flutter
              :main sample.main}}

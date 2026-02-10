@@ -3,7 +3,7 @@
   (:require ["package:flutter/material.dart" :as m]
             ["package:flutter/widgets.dart" :as w]
             [cljd.flutter :as f]
-            [sample.video-player :as vpl]))
+            [ianffcs.video-player :as vpl]))
 
 (defn default-layout
   "Returns a vector of widgets for the default player layout."
@@ -44,4 +44,4 @@
               .appBar (m/AppBar .title (m/Text "Video with Background Audio")))
       .body (some->> SamplePlayerView
                      (assoc video-config ::vpl/builder)
-                     (vpl/VideoPlayer)))))
+                     vpl/VideoPlayer))))
